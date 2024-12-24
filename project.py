@@ -1,11 +1,12 @@
 #!/usr/bin/env python
-
 import rospy
 from geometry_msgs.msg import Twist
 from turtlesim.msg import Pose
 import math
 import time
 from std_srvs.srv import Empty
+from turtlesim.msg import Pose
+from turtlesim.srv import TeleportAbsolute
 
 def poseCallback(pose_message):
     global x
@@ -14,27 +15,21 @@ def poseCallback(pose_message):
     y= pose_message.y
     yaw = pose_message.theta
 
-    #print "pose callback"
-    #print ('x = {}'.format(pose_message.x)) #new in python 3
-    #print ('y = %f' %pose_message.y) #used in python 2
-    #print ('yaw = {}'.format(pose_message.theta)) #new in python 3
-
-
 def move(velocity_publisher, speed, distance, is_forward):
         #declare a Twist message to send velocity commands
         velocity_message = Twist()
+        distance_moved = 0.0
+        loop_rate = rospy.Rate(10) # we publish the velocity at 10 Hz (10 times a second)
         #get current location 
         global x, y
         x0=x
         y0=y
-
+        
         if (is_forward):
             velocity_message.linear.x =abs(speed)
+           
         else:
-        	velocity_message.linear.x =-abs(speed)
-
-        distance_moved = 0.0
-        loop_rate = rospy.Rate(10) # we publish the velocity at 10 Hz (10 times a second)    
+            velocity_message.linear.x  =-abs(speed)
         
         while True :
                 rospy.loginfo("Turtlesim moves forwards")
@@ -45,14 +40,25 @@ def move(velocity_publisher, speed, distance, is_forward):
                 distance_moved = abs(math.sqrt(((x-x0) ** 2) + ((y-y0) ** 2)))
                 print  (distance_moved)
                 print(x)
-                if  not (distance_moved<distance):
+                if  not (distance_moved < distance):
                     rospy.loginfo("reached")
                     break
         
         #finally, stop the robot when the distance is moved
         velocity_message.linear.x =0
         velocity_publisher.publish(velocity_message)
-    
+
+def setDesiredOrientation(publisher, speed_in_degree, desired_angle_degree):
+    relative_angle_radians = math.radians(desired_angle_degree) - yaw
+    clockwise=0
+    if relative_angle_radians < 0:
+        clockwise = 1
+    else:
+        clockwise = 0
+    print ("relative_angle_radians: ",math.degrees(relative_angle_radians))
+    print ("desired_angle_degree: ",desired_angle_degree)
+    rotate(publisher, speed_in_degree,math.degrees(abs(relative_angle_radians)), clockwise)
+
 def rotate (velocity_publisher, angular_speed_degree, relative_angle_degree, clockwise):
     
     velocity_message = Twist()
@@ -89,6 +95,71 @@ def rotate (velocity_publisher, angular_speed_degree, relative_angle_degree, clo
     velocity_message.angular.z =0
     velocity_publisher.publish(velocity_message)
 
+#this function is for circular motion
+def circularMotion(radius):
+    vel_msg = Twist()
+    loop_rate = rospy.Rate(10) 
+    
+    angular_velocity = 1.5 
+    time_for_circle = 2 * math.pi / angular_velocity
+    
+    # Get start time
+    start_time = rospy.get_time()
+    
+    while True:
+        if rospy.get_time() - start_time >= time_for_circle:
+            # Stop the robot
+            vel_msg.linear.x = 0
+            vel_msg.angular.z = 0
+            velocity_publisher.publish(vel_msg)
+            break
+            
+        vel_msg.linear.x = radius
+        vel_msg.linear.y = 0
+        vel_msg.linear.z = 0
+        vel_msg.angular.x = 0
+        vel_msg.angular.y = 0
+        vel_msg.angular.z = angular_velocity
+        
+        velocity_publisher.publish(vel_msg)
+        loop_rate.sleep()
+
+def spiralMotion(velocity_publisher, ratechange):
+    vel_msg = Twist()
+    loop_rate = rospy.Rate(1)  # Update at 1 Hz
+    rk = 0  # Initial linear velocity
+   
+    while True:
+        # Spiral movement based on position
+        if x < 10.5 and y < 10.5:  # Stay within boundaries
+            rk += ratechange  # Increase linear velocity
+            vel_msg.linear.x = rk
+            vel_msg.linear.y = 0
+            vel_msg.linear.z = 0
+            vel_msg.angular.x = 0
+            vel_msg.angular.y = 0
+            vel_msg.angular.z = 4  
+        else:
+            rospy.loginfo("Reached boundary. Stopping spiral motion.")
+            break
+
+        # Publish velocity commands
+        velocity_publisher.publish(vel_msg)
+        loop_rate.sleep()
+
+    # Stop the robot at the end
+    vel_msg.linear.x = 0
+    vel_msg.angular.z = 0
+    velocity_publisher.publish(vel_msg)
+    rospy.loginfo("Spiral motion completed.")
+
+
+
+
+    #print "pose callback"
+    #print ('x = {}'.format(pose_message.x)) #new in python 3
+    #print ('y = %f' %pose_message.y) #used in python 2
+    #print ('yaw = {}'.format(pose_message.theta)) #new in python 3
 
 def go_to_goal(velocity_publisher, x_goal, y_goal):
     global x
@@ -114,17 +185,6 @@ def go_to_goal(velocity_publisher, x_goal, y_goal):
 
         if (distance <0.01):
             break
-
-def setDesiredOrientation(publisher, speed_in_degree, desired_angle_degree):
-    relative_angle_radians = math.radians(desired_angle_degree) - yaw
-    clockwise=0
-    if relative_angle_radians < 0:
-        clockwise = 1
-    else:
-        clockwise = 0
-    print ("relative_angle_radians: ",math.degrees(relative_angle_radians))
-    print ("desired_angle_degree: ",desired_angle_degree)
-    rotate(publisher, speed_in_degree,math.degrees(abs(relative_angle_radians)), clockwise)
 
 def gridClean(publisher):
  
@@ -152,7 +212,7 @@ def squareMotion(velocity_publisher,  angular_speed, linear_speed):
     while True:
         try:
             side_length = float(input("Enter the side length of the square (in meters): "))
-            if side_length > 10.5:
+            if side_length > 5.5:
                 print("Invalid side length! The side length must be 10.5 meters or less to stay within the grid.")
             elif side_length <= 0:
                 print("Invalid side length! The side length must be greater than 0.")
@@ -160,11 +220,22 @@ def squareMotion(velocity_publisher,  angular_speed, linear_speed):
                 break  # Valid input, exit the loop
         except ValueError:
             print("Invalid input! Please enter a numeric value for the side length.")
+    
+    angles = [0, 90, 180, 270]
 
-    # Execute square motion
-    for _ in range(4):
-        move(velocity_publisher, linear_speed, side_length, True)
-        rotate(velocity_publisher, angular_speed, 90, True)
+    for angle in angles:
+      # Ensure alignment before moving
+        
+
+        # Add a small delay to let orientation stabilize
+        rospy.sleep(0.5)
+
+        # Move forward
+        move(velocity_publisher,linear_speed, side_length, True)
+        rotate(velocity_publisher,angular_speed, 90,True)
+        rospy.sleep(0.5)
+    # Return to initial orientation
+    rotate(velocity_publisher,angular_speed, 0,True)
 
 def triangleMotion(velocity_publisher, side_length):
     for _ in range(3):  # Loop to create three sides of the triangle
@@ -173,49 +244,9 @@ def triangleMotion(velocity_publisher, side_length):
         # Rotate 120 degrees to the left
         rotate(velocity_publisher, angular_speed_degree=30, relative_angle_degree=120, clockwise=False)
 
-def circularMotion(raduis):
-    vel_msg = Twist()
-    loop_rate = rospy.Rate(10)
-    while 1: 
-        vel_msg.linear.x = raduis
-        vel_msg.linear.y = 0
-        vel_msg.linear.z = 0
-        vel_msg.angular.x = 0
-        vel_msg.angular.y = 0
-        vel_msg.angular.z = 1.5
-        loop_rate.sleep()
-        velocity_publisher.publish(vel_msg)
-
-def spiralMotion(ratechange):
-    vel_msg = Twist()
-    loop_rate = rospy.Rate(1)
-    rk = 0
-    print (x)
-    print (y)
-    while x < 8 and y < 8:
-        rk=rk+ratechange
-        print (x)
-        print (y)
-        vel_msg.linear.x =rk
-        vel_msg.linear.y =0
-        vel_msg.linear.z =0
-        vel_msg.angular.x = 0
-        vel_msg.angular.y = 0
-        vel_msg.angular.z = 4
-        velocity_publisher.publish(vel_msg)
-        loop_rate.sleep()
- 
-    vel_msg.linear.x = 0
-    vel_msg.angular.z = 0
-    velocity_publisher.publish(vel_msg)
-
-
-
-
 def zigzag(velocity_publisher,side_length, count):
    while True:
         try:
-            side_length = float(input("Enter the side length of the square (in meters): "))
             if side_length > 11:
                 print("Invalid side length! The side length must be 11 meters or less to stay within the grid.")
             elif side_length <= 0:
@@ -229,29 +260,18 @@ def zigzag(velocity_publisher,side_length, count):
         rotate(velocity_publisher, 30, 120, False)
         move(velocity_publisher, 1.0, side_length, True)
         rotate(velocity_publisher, 30, 120, True)
-
-def spiralClean(velocity_publisher, wk, rk):
-    vel_msg = Twist()
-    loop_rate = rospy.Rate(1)
- 
-    while((x<10.5) and (y<10.5)):
-        rk=rk+1
-        vel_msg.linear.x =rk
-        vel_msg.linear.y =0
-        vel_msg.linear.z =0
-        vel_msg.angular.x = 0
-        vel_msg.angular.y = 0
-        vel_msg.angular.z =wk
-        velocity_publisher.publish(vel_msg)
-        loop_rate.sleep()
- 
-    vel_msg.linear.x = 0
-    vel_msg.angular.z = 0
-    velocity_publisher.publish(vel_msg)
+def resetTurtlesim():
+    rospy.wait_for_service('/reset')  # Wait until the service is available
+    try:
+        reset_service = rospy.ServiceProxy('/reset', Empty)  # Create service client
+        reset_service()  # Call the service to reset turtlesim
+        rospy.loginfo("Turtlesim has been reset to initial position (0, 0).")
+    except rospy.ServiceException as e:
+        rospy.logerr("Service call failed: %s" % e)
 
 if __name__ == '__main__':
     try:
-        print("hello");
+        #this will create publisher node with name turtlesim_motion_pose
         rospy.init_node('turtlesim_motion_pose', anonymous=True)
 
         # Initialize global variables
@@ -270,7 +290,7 @@ if __name__ == '__main__':
 
         # Ensure data is received before continuing
         while x == 0.0 and y == 0.0:
-            rospy.loginfo("Waiting for pose data...")
+            rospy.loginfo("Waiting for postion  data...")
             time.sleep(1)
 
         # Display choices once data is ready
@@ -282,25 +302,27 @@ if __name__ == '__main__':
             print("4. Spiral")
             print("5. Point to Point")
             print("6. Zigzag motion")
-            print("7. Exit")
+            print("7. clear")
+            print("8. Exit")
 
             try:
-                choice = int(input("Enter your choice (1-7): "))
+                choice = int(input("Enter your choice (1-8): "))
 
                 if choice == 1:
-                    linear_speed = 1.0
-                    angular_speed = 30
+                    linear_speed = 0.5
+                    angular_speed = 5
                     squareMotion(velocity_publisher, angular_speed, linear_speed)
+                    
                 elif choice == 2:
                     print("You selected: Triangle motion")
-                    side_length = 2.0  # Specify the side length of the triangle
+                    side_length = float(input("Specify the side length of the triangle"))
                     triangleMotion(velocity_publisher, side_length)
                 elif choice == 3:
                     print("You selected: Circular motion")
                     try:
                         radius = float(input("Enter the radius of the circle: "))
-                        if radius <= 0:
-                            print("Invalid radius! The radius must be greater than 0.")
+                        if radius <= 0 or radius>4.1:
+                            print("Invalid radius! The radius must be greater than 0. and less than or equal to 4.1")
                         else:
                             circularMotion(radius)
                     except ValueError:
@@ -308,14 +330,26 @@ if __name__ == '__main__':
 
                 elif choice == 4:
                     c = float(input("Enter rate of change for spiral: "))
-                    spiralMotion(c)
+                    spiralMotion(velocity_publisher,c)
+                    #resetTurtlesim()
                 elif choice == 5:
                     print("You selected: Point to Point motion")
+                    xd = float(input("enter x "))
+                    yd = float(input("enter  "))
+                    go_to_goal(velocity_publisher,xd,yd)
+
                 elif choice == 6:
                     side_length = float(input("Enter the side_length"))
                     count = int(input("Enter the count"))
-                    zigzag(velocity_publisher, side_length, count)
+                    if side_length * count > 5.5:
+                        print("enter less than this values")
+                    else :
+                        zigzag(velocity_publisher, side_length, count)
                 elif choice == 7:
+                    resetTurtlesim()
+                    rospy.loginfo("Turtlesim has been reset.")
+                    
+                elif choice == 8:
                     print("Exiting the program. Goodbye!")
                     break
                 else:
