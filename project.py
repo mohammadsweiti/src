@@ -6,7 +6,7 @@ import math
 import time
 from std_srvs.srv import Empty
 from turtlesim.msg import Pose
-from turtlesim.srv import TeleportAbsolute
+#from turtlesim.srv import TeleportAbsolute
 
 def poseCallback(pose_message):
     global x
@@ -22,8 +22,8 @@ def move(velocity_publisher, speed, distance, is_forward):
         loop_rate = rospy.Rate(10) # we publish the velocity at 10 Hz (10 times a second)
         #get current location 
         global x, y
-        x0=x
-        y0=y
+        x0 = x
+        y0 = y
         
         if (is_forward):
             velocity_message.linear.x =abs(speed)
@@ -100,7 +100,7 @@ def circularMotion(radius):
     vel_msg = Twist()
     loop_rate = rospy.Rate(10) 
     
-    angular_velocity = 1.5 
+    angular_velocity = 1
     time_for_circle = 2 * math.pi / angular_velocity
     
     # Get start time
@@ -131,14 +131,14 @@ def spiralMotion(velocity_publisher, ratechange):
    
     while True:
         # Spiral movement based on position
-        if x < 10.5 and y < 10.5:  # Stay within boundaries
+        if x < 9.5 and y < 9.5:  # Stay within boundaries
             rk += ratechange  # Increase linear velocity
             vel_msg.linear.x = rk
             vel_msg.linear.y = 0
             vel_msg.linear.z = 0
             vel_msg.angular.x = 0
             vel_msg.angular.y = 0
-            vel_msg.angular.z = 4  
+            vel_msg.angular.z = 4 
         else:
             rospy.loginfo("Reached boundary. Stopping spiral motion.")
             break
@@ -320,9 +320,14 @@ if __name__ == '__main__':
                 elif choice == 3:
                     print("You selected: Circular motion")
                     try:
+                        
                         radius = float(input("Enter the radius of the circle: "))
-                        if radius <= 0 or radius>4.1:
-                            print("Invalid radius! The radius must be greater than 0. and less than or equal to 4.1")
+                        if  radius +radius+ x>11 or radius+radius + y>11: 
+                            print("Invalid radius! radius must  less than   this value")
+                        elif x - (2*radius )<= 0.2 or y-(2*radius)  <= 0.2: 
+                            print("Invalid radius! radius must  less than  this value")
+                        elif radius < 0: 
+                            print("Invalid radius! The radius must be greater than 0.")
                         else:
                             circularMotion(radius)
                     except ValueError:
@@ -330,7 +335,10 @@ if __name__ == '__main__':
 
                 elif choice == 4:
                     c = float(input("Enter rate of change for spiral: "))
-                    spiralMotion(velocity_publisher,c)
+                    if x>10.5 or y>= 10.5:
+                        print ("this will lead to out of the boundary , enter less than this value")
+                    else:
+                        spiralMotion(velocity_publisher,c)
                     #resetTurtlesim()
                 elif choice == 5:
                     print("You selected: Point to Point motion")
