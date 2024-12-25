@@ -6,8 +6,20 @@ import math
 import time
 from std_srvs.srv import Empty
 from turtlesim.msg import Pose
-#from turtlesim.srv import TeleportAbsolute
 
+#this function is to rotate to exact degree
+def setDesiredOrientation(publisher, speed_in_degree, desired_angle_degree):
+    relative_angle_radians = math.radians(desired_angle_degree) - yaw
+    clockwise=0
+    if relative_angle_radians < 0:
+        clockwise = 1
+    else:
+        clockwise = 0
+    print ("relative_angle_radians: ",math.degrees(relative_angle_radians))
+    print ("desired_angle_degree: ",desired_angle_degree)
+    rotate(publisher, speed_in_degree,math.degrees(abs(relative_angle_radians)), clockwise)
+
+#this call back function to the subscribed topic  which is postion
 def poseCallback(pose_message):
     global x
     global y, yaw
@@ -15,6 +27,7 @@ def poseCallback(pose_message):
     y= pose_message.y
     yaw = pose_message.theta
 
+#this function is to move to exact position 
 def move(velocity_publisher, speed, distance, is_forward):
         #declare a Twist message to send velocity commands
         velocity_message = Twist()
@@ -26,11 +39,9 @@ def move(velocity_publisher, speed, distance, is_forward):
         y0 = y
         
         if (is_forward):
-            velocity_message.linear.x =abs(speed)
-           
+            velocity_message.linear.x =abs(speed)  
         else:
             velocity_message.linear.x  =-abs(speed)
-        
         while True :
                 rospy.loginfo("Turtlesim moves forwards")
                 velocity_publisher.publish(velocity_message)
@@ -43,34 +54,19 @@ def move(velocity_publisher, speed, distance, is_forward):
                 if  not (distance_moved < distance):
                     rospy.loginfo("reached")
                     break
-        
         #finally, stop the robot when the distance is moved
         velocity_message.linear.x =0
         velocity_publisher.publish(velocity_message)
 
-def setDesiredOrientation(publisher, speed_in_degree, desired_angle_degree):
-    relative_angle_radians = math.radians(desired_angle_degree) - yaw
-    clockwise=0
-    if relative_angle_radians < 0:
-        clockwise = 1
-    else:
-        clockwise = 0
-    print ("relative_angle_radians: ",math.degrees(relative_angle_radians))
-    print ("desired_angle_degree: ",desired_angle_degree)
-    rotate(publisher, speed_in_degree,math.degrees(abs(relative_angle_radians)), clockwise)
-
+#this function rotate the turtlebot to desired location
 def rotate (velocity_publisher, angular_speed_degree, relative_angle_degree, clockwise):
-    
     velocity_message = Twist()
-
     angular_speed=math.radians(abs(angular_speed_degree))
-
     if (clockwise):
         velocity_message.angular.z =-abs(angular_speed)
     else:
         velocity_message.angular.z =abs(angular_speed)
 
-    angle_moved = 0.0
     loop_rate = rospy.Rate(10) # we publish the velocity at 10 Hz (10 times a second)    
     cmd_vel_topic='/turtle1/cmd_vel'
     velocity_publisher = rospy.Publisher(cmd_vel_topic, Twist, queue_size=10)
@@ -84,9 +80,7 @@ def rotate (velocity_publisher, angular_speed_degree, relative_angle_degree, clo
         t1 = rospy.Time.now().to_sec()
         current_angle_degree = (t1-t0)*angular_speed_degree
         loop_rate.sleep()
-
-
-                       
+    
         if  (current_angle_degree>relative_angle_degree):
             rospy.loginfo("reached")
             break
@@ -124,6 +118,7 @@ def circularMotion(radius):
         velocity_publisher.publish(vel_msg)
         loop_rate.sleep()
 
+#this function is to the spiral motion 
 def spiralMotion(velocity_publisher, ratechange):
     vel_msg = Twist()
     loop_rate = rospy.Rate(1)  # Update at 1 Hz
@@ -131,37 +126,30 @@ def spiralMotion(velocity_publisher, ratechange):
    
     while True:
         # Spiral movement based on position
-        if x < 9.5 and y < 9.5:  # Stay within boundaries
+        if (x  > 10 or y  > 10)or (x  < 1 or y  <1):  # Stay within boundaries
+            rospy.loginfo("Reached boundary. Stopping spiral motion.")
+            break
+             
+        else:
             rk += ratechange  # Increase linear velocity
             vel_msg.linear.x = rk
             vel_msg.linear.y = 0
             vel_msg.linear.z = 0
             vel_msg.angular.x = 0
             vel_msg.angular.y = 0
-            vel_msg.angular.z = 4 
-        else:
-            rospy.loginfo("Reached boundary. Stopping spiral motion.")
-            break
-
-        # Publish velocity commands
-        velocity_publisher.publish(vel_msg)
-        loop_rate.sleep()
-
+            vel_msg.angular.z = 4
+            
+            # Publish velocity commands
+            velocity_publisher.publish(vel_msg)
+            loop_rate.sleep()
     # Stop the robot at the end
     vel_msg.linear.x = 0
     vel_msg.angular.z = 0
     velocity_publisher.publish(vel_msg)
     rospy.loginfo("Spiral motion completed.")
-
-
-
-
-    #print "pose callback"
-    #print ('x = {}'.format(pose_message.x)) #new in python 3
-    #print ('y = %f' %pose_message.y) #used in python 2
-    #print ('yaw = {}'.format(pose_message.theta)) #new in python 3
-
-def go_to_goal(velocity_publisher, x_goal, y_goal):
+ 
+# Function for point-to-point movement
+def point_to_point(velocity_publisher, x_goal, y_goal):
     global x
     global y, yaw
 
@@ -186,86 +174,73 @@ def go_to_goal(velocity_publisher, x_goal, y_goal):
         if (distance <0.01):
             break
 
-def gridClean(publisher):
- 
-    desired_pose = Pose()
-    desired_pose.x = 1
-    desired_pose.y = 1
-    desired_pose.theta = 0
- 
-    go_to_goal(publisher, 1,1)
- 
-    setDesiredOrientation(publisher, 30, math.radians(desired_pose.theta))
- 
-    for i in range(5):
-        move(publisher, 2.0, 1.0, True)
-        rotate(publisher, 20, 90, False)
-        move(publisher, 2.0, 9.0, True)
-        rotate(publisher, 20, 90, True)
-        move(publisher, 2.0, 1.0, True)
-        rotate(publisher, 20, 90, True)
-        move(publisher, 2.0, 9.0, True)
-        rotate(publisher, 20, 90, False)
-    pass
 
-def squareMotion(velocity_publisher,  angular_speed, linear_speed):
-    while True:
-        try:
-            side_length = float(input("Enter the side length of the square (in meters): "))
-            if side_length > 5.5:
-                print("Invalid side length! The side length must be 10.5 meters or less to stay within the grid.")
-            elif side_length <= 0:
-                print("Invalid side length! The side length must be greater than 0.")
-            else:
-                break  # Valid input, exit the loop
-        except ValueError:
-            print("Invalid input! Please enter a numeric value for the side length.")
+
+def squareMotion(velocity_publisher):    
+    if side_length <= 1.0:
+        linear_speed = 0.5  # Slow for smaller squares
+        angular_speed = 10  # Slow turning
+    elif side_length <= 3.0:
+        linear_speed = 1  # Moderate speed
+        angular_speed = 15  # Moderate turning
+    else:
+        linear_speed = 2  # Faster for larger squares
+        angular_speed = 20  # Faster turning
     
-    angles = [0, 90, 180, 270]
-
-    for angle in angles:
-      # Ensure alignment before moving
-        
-
+    i = 0
+    for i in range (4):
         # Add a small delay to let orientation stabilize
         rospy.sleep(0.5)
-
         # Move forward
         move(velocity_publisher,linear_speed, side_length, True)
         rotate(velocity_publisher,angular_speed, 90,True)
         rospy.sleep(0.5)
-    # Return to initial orientation
-    rotate(velocity_publisher,angular_speed, 0,True)
-
+        i = i+1
+    
+#this function is to the triangle motion
 def triangleMotion(velocity_publisher, side_length):
-    for _ in range(3):  # Loop to create three sides of the triangle
-        # Move forward for the length of the triangle's side
-        move(velocity_publisher, speed=1.0, distance=side_length, is_forward=True)
-        # Rotate 120 degrees to the left
-        rotate(velocity_publisher, angular_speed_degree=30, relative_angle_degree=120, clockwise=False)
+    for _ in range(3): 
+        move(velocity_publisher, 1.0,side_length, True)
+        rotate(velocity_publisher, 10, 120,False)
 
-def zigzag(velocity_publisher,side_length, count):
-   while True:
-        try:
-            if side_length > 11:
-                print("Invalid side length! The side length must be 11 meters or less to stay within the grid.")
-            elif side_length <= 0:
-                print("Invalid side length! The side length must be greater than 0.")
-            else:
-                break  # Valid input, exit the loop
-        except ValueError:
-            print("Invalid input! Please enter a numeric value for the side length.")
-   for _ in range(count):
-        move(velocity_publisher, 1.0, side_length, True)
-        rotate(velocity_publisher, 30, 120, False)
-        move(velocity_publisher, 1.0, side_length, True)
-        rotate(velocity_publisher, 30, 120, True)
+#this function is to the zigzag motion
+def zigzag(velocity_publisher,side_length, count,direction):
+    if direction ==1:
+        setDesiredOrientation(velocity_publisher,30,60)
+        for _ in range(count):
+            move(velocity_publisher, 1.0, side_length, True)
+            rotate(velocity_publisher, 20, 120, True)
+            move(velocity_publisher, 1.0, side_length, True)
+            rotate(velocity_publisher, 20, 120, False)
+    elif direction == 2 :
+        setDesiredOrientation(velocity_publisher,30,30)
+        for _ in range(count):  
+            move(velocity_publisher, 1.5, side_length, True)
+            rotate(velocity_publisher, 20, 120, False)
+            move(velocity_publisher, 1.5, side_length, True)
+            rotate(velocity_publisher, 20, 120, True)
+    if direction ==3:
+        setDesiredOrientation(velocity_publisher,30,120)
+        for _ in range(count):
+            move(velocity_publisher, 1.0, side_length, True)
+            rotate(velocity_publisher, 20, 120, False)
+            move(velocity_publisher, 1.0, side_length, True)
+            rotate(velocity_publisher, 20, 120, True)
+    elif direction ==4 :
+        setDesiredOrientation(velocity_publisher,30,-30)
+        for _ in range(count):  
+            move(velocity_publisher, 1.5, side_length, True)
+            rotate(velocity_publisher, 20, 120, True)
+            move(velocity_publisher, 1.5, side_length, True)
+            rotate(velocity_publisher, 20, 120, False)
+    
+#We add this function to return the turtle to the initial state        
 def resetTurtlesim():
     rospy.wait_for_service('/reset')  # Wait until the service is available
     try:
         reset_service = rospy.ServiceProxy('/reset', Empty)  # Create service client
         reset_service()  # Call the service to reset turtlesim
-        rospy.loginfo("Turtlesim has been reset to initial position (0, 0).")
+        rospy.loginfo("Turtlesim has been reset to initial state")
     except rospy.ServiceException as e:
         rospy.logerr("Service call failed: %s" % e)
 
@@ -309,20 +284,34 @@ if __name__ == '__main__':
                 choice = int(input("Enter your choice (1-8): "))
 
                 if choice == 1:
-                    linear_speed = 0.5
-                    angular_speed = 5
-                    squareMotion(velocity_publisher, angular_speed, linear_speed)
-                    
+                    try:
+                        print(x)
+                        print(y)
+                        side_length = float(input("Enter the side length of the square (in meters): "))
+                        if side_length <= 0:
+                          print("Invalid side length! The side length must be greater than 0.")
+                        elif (side_length + x > 10.8) or (y + side_length > 10.8):
+                            print("Invalid side length! The side length must less to stay within the grid.")
+                        else:
+                          squareMotion(velocity_publisher) 
+                    except ValueError:
+                        print("Invalid input! Please enter a numeric value for the side length.")
+
                 elif choice == 2:
                     print("You selected: Triangle motion")
-                    side_length = float(input("Specify the side length of the triangle"))
-                    triangleMotion(velocity_publisher, side_length)
+                    try:
+                        side_length = float(input("Specify the side length of the triangle."))
+                        if side_length + x >= 10.9 or side_length + y >= 10.9:
+                            print ("this value is big , pleas enter value less than this value ")
+                        else:
+                            triangleMotion(velocity_publisher, side_length)
+                    except ValueError:
+                        print("Invalid input! Please enter a numeric value for the side lengthof the triangle.")
                 elif choice == 3:
                     print("You selected: Circular motion")
-                    try:
-                        
+                    try: 
                         radius = float(input("Enter the radius of the circle: "))
-                        if  radius +radius+ x>11 or radius+radius + y>11: 
+                        if  radius +radius+ x>10.9 or radius+radius + y>10.9: 
                             print("Invalid radius! radius must  less than   this value")
                         elif x - (2*radius )<= 0.2 or y-(2*radius)  <= 0.2: 
                             print("Invalid radius! radius must  less than  this value")
@@ -334,25 +323,50 @@ if __name__ == '__main__':
                         print("Invalid input! Please enter a valid number for the radius.")
 
                 elif choice == 4:
-                    c = float(input("Enter rate of change for spiral: "))
-                    if x>10.5 or y>= 10.5:
-                        print ("this will lead to out of the boundary , enter less than this value")
-                    else:
-                        spiralMotion(velocity_publisher,c)
+                    try:
+                        rateChange = float(input("Enter rate of change for spiral: "))
+                        if x +rateChange >10.5 or y + rateChange>= 10.5 or x - rateChange <1 or y - rateChange <1:
+                            print ("this will lead to out of the boundary , enter less than this value")
+                        elif rateChange > 3:
+                            print ("this rate of change should be less than this value , please try again")
+                        else:
+                            spiralMotion(velocity_publisher,rateChange)
+                    except ValueError:
+                        print("Invalid input! Please enter a valid number for the rate of Change.")
                     #resetTurtlesim()
                 elif choice == 5:
                     print("You selected: Point to Point motion")
-                    xd = float(input("enter x "))
-                    yd = float(input("enter  "))
-                    go_to_goal(velocity_publisher,xd,yd)
-
+                    try:
+                        xd = float(input("enter x "))
+                        yd = float(input("enter y "))
+                        if xd >= 10.9 or yd >= 10.9:
+                            print("invalid destanation point ,it should be less than this ")
+                        elif xd <0 or yd<0:
+                            print("invalid destanation point ,it should be greater than this ")
+                        else:
+                          point_to_point(velocity_publisher,xd,yd)
+                    except ValueError:
+                        print("Invalid input! Please enter a valid number for the destanations.")
                 elif choice == 6:
-                    side_length = float(input("Enter the side_length"))
-                    count = int(input("Enter the count"))
-                    if side_length * count > 5.5:
-                        print("enter less than this values")
-                    else :
-                        zigzag(velocity_publisher, side_length, count)
+                    try:
+                        side_length = float(input("Enter the side_length"))
+                        count = int(input("Enter the count"))
+                        direction = float(input("Enter the direction,Like\n 1: is right \n 2:up \n3:left:\n4:down"))
+                        if side_length <= 0:
+                            print("Invalid side length! The side length must be greater than 0.")
+                        elif  direction ==1 and  ( side_length *count + x > 10.9 or y + side_length>10.9):
+                           print("Invalid side length! The side length must be 11 meters or less to stay within the grid.")
+                        elif direction ==2 and  ( side_length *count + y > 10.9 or x + side_length>10.9):
+                           print("Invalid side length! The side length must be 11 meters or less to stay within the grid.")
+                        elif direction ==3 and  ( x -side_length *count < 0.5 or x + side_length>10.9):
+                           print("Invalid side length! The side length must be 11 meters or less to stay within the grid.")
+                        elif direction ==4 and  ( y- side_length *count <0.5 or x + side_length>10.9):
+                           print("Invalid side length! The side length must be 11 meters or less to stay within the grid.")
+                        else:
+                            zigzag(velocity_publisher, side_length, count,direction)    
+                    except ValueError:
+                        print("Invalid input! Please enter a numeric value for the aigazg motion.")
+                        
                 elif choice == 7:
                     resetTurtlesim()
                     rospy.loginfo("Turtlesim has been reset.")
@@ -367,3 +381,5 @@ if __name__ == '__main__':
 
     except rospy.ROSInterruptException:
         rospy.loginfo("Node terminated.")
+
+
